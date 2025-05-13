@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from google.cloud import storage
 import os, tempfile
-import time  # Asegúrate de importar el módulo time
+import time  
 
 app = Flask(__name__)
 
@@ -16,50 +16,18 @@ STEM_PERSONALITIES = {
     "M": "Mathematics (Matemáticas)"
 }
 
-@app.route('/upload_csv', methods=['POST'])
-def upload_csv():
-    # 1) leemos el CSV del body
-    csv_bytes = request.get_data()       # bytes del CSV
-    if not csv_bytes:
-        return "No CSV received", 400
-
-    # 2) guardamos a un temp file
-    tf = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-    tf.write(csv_bytes)
-    tf.flush()
-    tf.close()
-
-    # 3) subimos a GCS
-    try:
-        client = storage.Client()
-        bucket = client.bucket(BUCKET_NAME)
-        # path en el bucket: quiz-results/<timestamp>.csv
-        dest_path = f"quiz-results/{int(time.time())}.csv"
-        blob = bucket.blob(dest_path)
-        blob.upload_from_filename(tf.name, content_type="text/csv")
-        # opcional: URL firmada o pública
-        url = blob.public_url
-    except Exception as e:
-        return jsonify(error=str(e)), 500
-    finally:
-        os.unlink(tf.name)
-
-    return jsonify({"message":"CSV uploaded", "url": url}), 200
+# Mapeo de carreras a cada categoría STEM
+degree_map = {
+    'ciencia': ['Mecánica eléctrica'],
+    'tecnologia': ['Desarrollo de software', 'Computación'],
+    'ingenieria': ['Mecatrónica', 'Robótica'],
+    'matematicas': ['Electrónica y Computación']
+}
 
 @app.route('/predict_stem_personality', methods=['POST'])
 def predict_stem_personality():
     """
-    Recibe un JSON con las respuestas del usuario y predice su personalidad STEM.
-
-    Ejemplo de JSON de entrada:
-    {
-        "respuestas": {
-            "ciencia": [3, 4, 5],  # Puntuaciones para preguntas de ciencia (1-5)
-            "tecnologia": [4, 5, 3],  # Puntuaciones para preguntas de tecnología
-            "ingenieria": [2, 3, 4],  # Puntuaciones para preguntas de ingeniería
-            "matematicas": [5, 4, 3]  # Puntuaciones para preguntas de matemáticas
-        }
-    }
+    Recibe un JSON con las respuestas del usuario y predice su personalidad STEM y su carrera sugerida.
     """
     try:
         # Obtener datos del request
@@ -91,6 +59,20 @@ def predict_stem_personality():
 
         # Determinar la personalidad STEM basada en la categoría con mayor puntuación
         categoria_max = max(promedios, key=promedios.get)
+        
+        # Verificar si hay empate entre las categorías con la mayor puntuación
+        max_score = max(promedios.values())
+        top_categories = [cat for cat, score in promedios.items() if score == max_score]
+
+        # Si hay un empate entre categorías, sugerir "No se ha encontrado una carrera"
+        if len(top_categories) > 1:
+            return jsonify({
+                "personalidad_stem": "No clasificado",
+                "descripcion": "No se ha encontrado una carrera adecuada en este momento, pero pronto tendremos más opciones.",
+                "puntuaciones": promedios,
+                "detalles": "Tu perfil STEM no se clasifica en una sola categoría definida.",
+                "carreras": ["Aún no tenemos una carrera definida para ti."]
+            }), 200
 
         # Mapear la categoría a la personalidad STEM
         stem_map = {
@@ -102,6 +84,9 @@ def predict_stem_personality():
 
         personalidad_stem = stem_map[categoria_max]
         descripcion_stem = STEM_PERSONALITIES[personalidad_stem]
+
+        # Sugerir carreras basadas en la categoría con mayor puntuación
+        suggested_degrees = degree_map.get(categoria_max, [])
 
         # Preparar resultados detallados
         resultados = {
@@ -129,22 +114,9 @@ def predict_stem_personality():
                     "puntuacion": promedios['matematicas'],
                     "porcentaje": round(promedios['matematicas'] / 5 * 100, 2)
                 }
-            }
+            },
+            "carreras": suggested_degrees
         }
-
-        # Suggestions mapping
-        degree_map = {
-            'ciencia': ['Mecánica eléctrica'],
-            'tecnologia': ['Desarrollo de software', 'Computación'],
-            'ingenieria': ['Mecatrónica', 'Robótica'],
-            'matematicas': ['Electrónica y Computación']
-        }
-        max_score = max(promedios.values())
-        top_categories = [cat for cat, score in promedios.items() if score == max_score]
-        suggested_degrees = []
-        for cat in top_categories:
-            suggested_degrees.extend(degree_map.get(cat, []))
-        resultados['carreras'] = suggested_degrees
 
         return jsonify(resultados), 200
 
