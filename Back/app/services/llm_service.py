@@ -1,10 +1,10 @@
 import json
 import uuid
 import logging
+from datetime import datetime
 from typing import List, Dict, Any, Optional
-from sqlalchemy.orm import Session
 
-from app.db.models import UserResponse, LLMResult
+from app.db.mongodb_models import save_user_response, get_database
 from app.schemas.personality import QuestionResponse, LLMResultCreate
 
 # Configurar logging
@@ -84,19 +84,18 @@ carreras son compatibles con su perfil y cómo podría aprovechar sus fortalezas
             "raw_response": llm_response
         }
     
-    def save_user_responses(self, db: Session, responses: List[QuestionResponse], 
-                           user_id: Optional[int] = None, session_id: Optional[str] = None) -> UserResponse:
+    async def save_user_responses(self, responses: List[QuestionResponse], 
+                                 user_id: Optional[str] = None, session_id: Optional[str] = None) -> str:
         """
-        Guarda las respuestas del usuario en la base de datos
+        Guarda las respuestas del usuario en MongoDB
         
         Args:
-            db: Sesión de base de datos
             responses: Lista de respuestas del usuario
             user_id: ID del usuario (opcional)
             session_id: ID de sesión (opcional, se genera uno si no se proporciona)
             
         Returns:
-            Objeto UserResponse guardado en la base de datos
+            ID del documento guardado en MongoDB
         """
         # Si no se proporciona session_id, generar uno
         if not session_id:
@@ -105,23 +104,30 @@ carreras son compatibles con su perfil y cómo podría aprovechar sus fortalezas
         else:
             logger.info(f"Usando session_id proporcionado: {session_id}")
         
-        # Convertir las respuestas a formato JSON para la base de datos
+        # Convertir las respuestas a formato compatible con MongoDB
         responses_data = [resp.dict() for resp in responses]
-        logger.info(f"Guardando {len(responses_data)} respuestas en la base de datos")
+        logger.info(f"Guardando {len(responses_data)} respuestas en MongoDB")
         
-        # Crear y guardar el objeto UserResponse
-        db_response = UserResponse(
-            user_id=user_id,
-            session_id=session_id,
-            responses_data=responses_data
-        )
+        # Preparar datos para MongoDB
+        user_responses_data = []
+        for resp in responses:
+            response_data = {
+                "user_id": user_id,
+                "session_id": session_id,
+                "question_type": getattr(resp, 'question_type', 'unknown'),
+                "question_id": getattr(resp, 'question_id', 0),
+                "response": resp.respuesta,
+                "response_value": getattr(resp, 'response_value', 0.0),
+                "intelligence_type": getattr(resp, 'intelligence_type', None),
+                "dimension": getattr(resp, 'dimension', None)
+            }
+            
+            # Guardar cada respuesta individualmente en MongoDB
+            response_id = await save_user_response(response_data)
+            user_responses_data.append(response_id)
         
-        db.add(db_response)
-        db.commit()
-        db.refresh(db_response)
-        logger.info(f"Respuestas guardadas con ID: {db_response.id}")
-        
-        return db_response
+        logger.info(f"Respuestas guardadas en MongoDB: {len(user_responses_data)} documentos")
+        return session_id
     
     def generate_llm_prompt(self, responses: List[QuestionResponse]) -> str:
         """
@@ -173,42 +179,41 @@ Preguntas y respuestas del usuario:
         logger.info(f"Prompt generado con longitud: {len(prompt)} caracteres")
         return prompt
     
-    def save_llm_result(self, db: Session, user_response_id: int, 
-                       llm_result: LLMResultCreate, prompt_used: str,
-                       user_id: Optional[int] = None) -> LLMResult:
+    async def save_llm_result(self, session_id: str, llm_result: LLMResultCreate, 
+                             prompt_used: str, user_id: Optional[str] = None) -> str:
         """
-        Guarda el resultado del LLM en la base de datos
+        Guarda el resultado del LLM en MongoDB
         
         Args:
-            db: Sesión de base de datos
-            user_response_id: ID de las respuestas del usuario
+            session_id: ID de sesión del usuario
             llm_result: Resultado del LLM
             prompt_used: Prompt utilizado para generar el resultado
             user_id: ID del usuario (opcional)
             
         Returns:
-            Objeto LLMResult guardado en la base de datos
+            ID del documento guardado en MongoDB
         """
-        logger.info(f"Guardando resultado LLM para user_response_id: {user_response_id}")
+        logger.info(f"Guardando resultado LLM para session_id: {session_id}")
         
-        # Crear y guardar el objeto LLMResult
-        db_result = LLMResult(
-            user_id=user_id,
-            user_response_id=user_response_id,
-            mbti_result=llm_result.mbti_result,
-            mbti_vector=llm_result.mbti_vector,
-            mbti_weights=llm_result.mbti_weights,
-            mi_ranking=llm_result.mi_ranking,
-            full_result=llm_result.full_analysis if llm_result.full_analysis else {},
-            prompt_used=prompt_used
-        )
+        # Preparar datos para MongoDB
+        db = await get_database()
+        llm_data = {
+            "user_id": user_id,
+            "session_id": session_id,
+            "mbti_result": llm_result.mbti_result,
+            "mbti_vector": llm_result.mbti_vector,
+            "mbti_weights": llm_result.mbti_weights,
+            "mi_ranking": llm_result.mi_ranking,
+            "full_result": llm_result.full_analysis if llm_result.full_analysis else {},
+            "prompt_used": prompt_used,
+            "created_at": datetime.utcnow()
+        }
         
-        db.add(db_result)
-        db.commit()
-        db.refresh(db_result)
-        logger.info(f"Resultado LLM guardado con ID: {db_result.id}")
+        # Guardar en MongoDB
+        result = await db.llm_results.insert_one(llm_data)
+        logger.info(f"Resultado LLM guardado con ID: {result.inserted_id}")
         
-        return db_result
+        return str(result.inserted_id)
     
     def process_llm_response(self, llm_response: str) -> LLMResultCreate:
         """

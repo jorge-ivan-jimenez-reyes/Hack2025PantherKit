@@ -1,0 +1,79 @@
+# Archivos y directorios a ignorar en Docker
+
+# Archivos de entorno local
+.env
+.env.local
+.env.development
+.env.production
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de Git
+.git
+.gitignore
+
+# Archivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Entornos virtuales
+venv/
+env/
+ENV/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# Documentación
+docs/
+*.md
+README.md
+
+# Archivos de logs
+*.log
+
+# Archivos temporales
+*.tmp
+*.temp
+
+# Archivos de backup
+*.bak
+*.backup
+
+# Archivos de configuración local de Cursor
+.cursorrules
+
+# Node modules (si los hay)
+node_modules/
+
+# Archivos de cobertura de tests
+.coverage
+htmlcov/
+.pytest_cache/

@@ -1,22 +1,21 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:14
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    env_file:
-      - ./.env
+  mongodb:
+    image: mongo:7
+    container_name: career_mongodb
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: nlp
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: stem_careers
-
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+      MONGO_INITDB_DATABASE: career_recommendations
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongodb-init:/docker-entrypoint-initdb.d
     ports:
-      - "5434:5432"
+      - "27017:27017"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nlp -d stem_careers"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -31,18 +30,19 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 6G  # Aumentado para modelos Transformer
         reservations:
-          memory: 2G
+          memory: 3G
     depends_on:
-      db:
+      mongodb:
         condition: service_healthy
     env_file:
       - ./.env
     environment:
-      - POSTGRES_HOST=db
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-nlp}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-stem_careers}
+      - MONGODB_URL=mongodb://admin:admin123@mongodb:27017/career_recommendations?authSource=admin
+      - DEBUG=True
       - TF_CPP_MIN_LOG_LEVEL=2  # Reducir nivel de logs de TensorFlow
+      - PYTHONPATH=/app
 
 volumes:
-  postgres_data: 
+  mongodb_data: 

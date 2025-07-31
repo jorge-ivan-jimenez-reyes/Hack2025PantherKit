@@ -1,0 +1,34 @@
+# Cursor IDE Configuration
+
+## Archivos importantes del proyecto
+- Este es un proyecto de API FastAPI para recomendaciones de carreras STEM
+- Usa MongoDB como base de datos principal y SQLAlchemy como ORM secundario
+- Incluye modelos de ML avanzados con TensorFlow y Transformers
+
+## Archivos que Cursor puede editar
+- Permitir edición de archivos .env para configuración local
+- Permitir edición de todos los archivos Python (.py)
+- Permitir edición de archivos de configuración (requirements.txt, docker-compose.yml, etc.)
+
+## Estructura del proyecto
+```
+app/
+├── api/          # Endpoints de la API
+├── core/         # Configuración
+├── db/           # Modelos de base de datos
+├── models/       # Modelos de ML
+├── services/     # Lógica de negocio
+├── schemas/      # Esquemas Pydantic
+└── utils/        # Utilidades
+```
+
+## Variables de entorno necesarias
+- MONGODB_URL: Conexión a MongoDB
+- DEBUG: Modo debug de la aplicación
+- TF_CPP_MIN_LOG_LEVEL: Nivel de logs de TensorFlow
+- Variables de PostgreSQL (para compatibilidad con SQLAlchemy)
+
+## Comandos útiles
+- `docker-compose up --build`: Levantar servicios
+- `docker-compose logs api`: Ver logs de la API
+- `docker-compose logs mongodb`: Ver logs de MongoDB

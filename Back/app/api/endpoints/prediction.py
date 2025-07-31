@@ -1,10 +1,35 @@
+from fastapi import APIRouter, HTTPException, Depends
+from typing import Dict, Any
+import logging
+
+from app.schemas.personality import ProfileData
+from app.services.neural_service import NeuralCareerService
+from app.services.llm_service import LLMService
+from app.services.llm_api_service import LLMApiService
+from app.db.mongodb_models import save_user_profile, save_career_recommendation
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("prediction_api")
+
+router = APIRouter()
+
+# Servicios
+def get_neural_service():
+    return NeuralCareerService()
+
+def get_llm_service():
+    return LLMService()
+
+def get_llm_api_service():
+    return LLMApiService()
+
 @router.post("/recommend_careers")
 async def recommend_careers(
     profile_data: ProfileData,
     neural_service: NeuralCareerService = Depends(get_neural_service),
     llm_service: LLMService = Depends(get_llm_service),
-    llm_api_service: LLMApiService = Depends(get_llm_api_service),
-    db: Session = Depends(get_db)
+    llm_api_service: LLMApiService = Depends(get_llm_api_service)
 ):
     """Recomienda carreras STEM basadas en el perfil MBTI y MI del usuario"""
     logger.info("Iniciando proceso de recomendación de carreras")
@@ -44,8 +69,39 @@ async def recommend_careers(
         )
         logger.info(f"Recomendaciones generadas: {len(recommendations)}")
         
+        # Guardar perfil y recomendaciones en MongoDB
+        try:
+            profile_data_dict = {
+                "session_id": getattr(profile_data, 'session_id', f"session_{profile_data.mbti_result.MBTI_code}"),
+                "mbti_code": profile_data.mbti_result.MBTI_code,
+                "mbti_vector": mbti_vector,
+                "mbti_weights": mbti_weights,
+                "mi_scores": mi_scores
+            }
+            
+            profile_id = await save_user_profile(profile_data_dict)
+            logger.info(f"Perfil guardado con ID: {profile_id}")
+            
+            # Guardar recomendaciones
+            recommendation_data = {
+                "user_profile_id": profile_id,
+                "session_id": profile_data_dict["session_id"],
+                "recommendations": recommendations,
+                "model_used": "neural_cnn",
+                "model_version": "1.0",
+                "prediction_confidence": max([r["match_score"] for r in recommendations]) if recommendations else 0.0,
+                "top_scores": [r["match_score"] for r in recommendations]
+            }
+            
+            recommendation_id = await save_career_recommendation(recommendation_data)
+            logger.info(f"Recomendaciones guardadas con ID: {recommendation_id}")
+            
+        except Exception as db_error:
+            logger.warning(f"Error guardando en BD: {str(db_error)}")
+            # No fallar la predicción por errores de BD
+        
         # Si se solicita análisis, generar con LLM
-        if profile_data.include_analysis:
+        if getattr(profile_data, 'include_analysis', False):
             logger.info("Generando análisis con LLM...")
             
             # Crear texto MI para el prompt
@@ -89,4 +145,13 @@ async def recommend_careers(
         raise HTTPException(
             status_code=500,
             detail=f"Error generando recomendaciones: {str(e)}"
-        ) 
+        )
+
+@router.get("/health")
+async def prediction_health_check():
+    """Health check for prediction endpoint"""
+    return {
+        "status": "healthy",
+        "service": "prediction",
+        "model": "neural_cnn"
+    } 

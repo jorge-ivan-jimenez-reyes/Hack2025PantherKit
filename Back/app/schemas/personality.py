@@ -11,6 +11,12 @@ class MBTIResult(BaseModel):
     MBTI_code: str  # e.g., "INTP"
     MBTI_vector: List[int]  # binary representation, e.g., [0, 1, 0, 0]
     MBTI_weights: Dict[str, float]  # e.g., {"E/I": 0.85, "S/N": 0.62, ...}
+    
+    # Campos individuales para compatibilidad
+    ei: str = Field(..., description="E or I")  # Extraversion/Introversion
+    sn: str = Field(..., description="S or N")  # Sensing/Intuition
+    tf: str = Field(..., description="T or F")  # Thinking/Feeling
+    jp: str = Field(..., description="J or P")  # Judging/Perceiving
 
 class MIResult(BaseModel):
     MI_scores: Dict[str, float]  # e.g., {"Lin": 0.7, "LogMath": 0.9, ...}
@@ -30,6 +36,13 @@ class CareerMatch(BaseModel):
     universidad: str
     ciudad: str
     match_score: float
+
+class ProfileData(BaseModel):
+    """Esquema para datos de perfil de usuario con MBTI y MI"""
+    mbti_result: MBTIResult
+    mi_scores: Dict[str, float]
+    session_id: Optional[str] = None
+    user_id: Optional[str] = None
 
 class UserProfile(BaseModel):
     mbti_result: Optional[MBTIResult] = None
